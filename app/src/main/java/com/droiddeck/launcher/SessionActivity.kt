@@ -462,7 +462,10 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         isFocusableInTouchMode = true
         defaultFocusHighlightEnabled = false
         setContent {
-            androidx.compose.runtime.LaunchedEffect(drawerOpen, pcKeyboardOpen, achievementsOpen, pipUi) { updatePointerCapture() }
+            androidx.compose.runtime.LaunchedEffect(drawerOpen, pcKeyboardOpen, achievementsOpen, pipUi) {
+                updatePointerCapture()
+                if (!menuOpen() && guestPaintsCursor()) cursorVisible = false
+            }
             DroidDeckTheme {
             if (pipUi) {
                 if (SessionState.suspended) androidx.compose.foundation.layout.Box(
@@ -474,8 +477,6 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
                 }
             } else {
             com.droiddeck.launcher.ui.FocusGlideHost(androidx.compose.ui.Modifier.fillMaxSize()) {
-                CursorOverlay(cursorPos, cursorVisible, resources.displayMetrics.density,
-                    cursorImage, cursorHotX, cursorHotY, cursorImageScale)
                 if (hud.text.isNotEmpty()) HudText(hud.text)
                 if (loading.visible) LoadingOverlay(
                     loading.step, loading.percent, loading.elapsed, loading.hint, loading.ended,
@@ -737,6 +738,9 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
                         cornerAtRest = 20.dp,
                     ) { finishFlooded() }
                 }
+                val menu = drawerOpen || pcKeyboardOpen || achievementsOpen
+                CursorOverlay(cursorPos, cursorVisible, resources.displayMetrics.density,
+                    if (menu) null else cursorImage, cursorHotX, cursorHotY, cursorImageScale)
             }
         }
         }
@@ -1623,6 +1627,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         if (drawerDirectionKey != KeyEvent.KEYCODE_UNKNOWN) releaseDrawerDirection()
         if ((pcKeyboardOpen || achievementsOpen) && PadBridge.isControllerMotionEvent(event)) return super.dispatchGenericMotionEvent(event)
         if (padBridge?.onMotionEvent(event) == true) return true
+        if (event.isFromSource(InputDevice.SOURCE_MOUSE) && menuOpen()) trackMenuCursor(event)
         if (event.isFromSource(android.view.InputDevice.SOURCE_MOUSE) && !drawerOpen && onMouse(event)) return true
         return super.dispatchGenericMotionEvent(event)
     }
@@ -1635,6 +1640,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         if (event.actionMasked == MotionEvent.ACTION_DOWN && event.isFromSource(InputDevice.SOURCE_TOUCHSCREEN)) {
             drawerControllerActive = false
         }
+        if (event.isFromSource(InputDevice.SOURCE_MOUSE) && menuOpen()) trackMenuCursor(event)
         return super.dispatchTouchEvent(event)
     }
 
@@ -1740,12 +1746,30 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         showCursor(cx, cy)
     }
 
+    private fun menuOpen(): Boolean = drawerOpen || pcKeyboardOpen || achievementsOpen
+
+    // droiddeck-session runs Steam under gamescope with cursor_composite=2, which paints the
+    // pointer into its own frames; a second one drawn here trails it as a shadow.
+    private fun guestPaintsCursor(): Boolean = SessionState.mode == SessionService.MODE_STEAM
+
+    private fun trackMenuCursor(event: MotionEvent) {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_HOVER_ENTER, MotionEvent.ACTION_HOVER_MOVE, MotionEvent.ACTION_MOVE,
+            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_BUTTON_PRESS -> {
+                cursorPos = androidx.compose.ui.geometry.Offset(event.x, event.y)
+                uiHandler.removeCallbacks(cursorHide)
+                cursorVisible = true
+            }
+        }
+    }
+
     private fun showCursor(x: Float, y: Float) {
         cursorPos = androidx.compose.ui.geometry.Offset(x, y)
         syncClientCursor()
         uiHandler.removeCallbacks(cursorResync)
         uiHandler.postDelayed(cursorResync, 60)
-        if (clientHidesCursor) { cursorVisible = false; return }
+        if (menuOpen()) return
+        if (clientHidesCursor || guestPaintsCursor()) { cursorVisible = false; return }
         if (android.os.SystemClock.uptimeMillis() - lastPadInputMs < CURSOR_PAD_HOLD_MS) return
         cursorVisible = true
         uiHandler.removeCallbacks(cursorHide)
