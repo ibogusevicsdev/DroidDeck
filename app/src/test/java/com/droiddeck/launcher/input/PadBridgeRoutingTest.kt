@@ -39,10 +39,28 @@ class PadBridgeRoutingTest {
     }
 
     @Test fun gamepadsKeepTheirKeyboardCapabilities() {
-        for (type in listOf(InputDevice.KEYBOARD_TYPE_NON_ALPHABETIC, InputDevice.KEYBOARD_TYPE_ALPHABETIC)) {
-            assertTrue(PadBridge.isFromController(device(InputDevice.SOURCE_GAMEPAD or InputDevice.SOURCE_KEYBOARD, type)))
-        }
+        assertTrue(PadBridge.isFromController(device(InputDevice.SOURCE_GAMEPAD or InputDevice.SOURCE_KEYBOARD,
+            InputDevice.KEYBOARD_TYPE_NON_ALPHABETIC)))
+        assertTrue(PadBridge.isFromController(device(InputDevice.SOURCE_GAMEPAD or InputDevice.SOURCE_JOYSTICK or InputDevice.SOURCE_KEYBOARD,
+            InputDevice.KEYBOARD_TYPE_ALPHABETIC, rangeSource = InputDevice.SOURCE_JOYSTICK)))
         assertTrue(PadBridge.anyControllerConnected())
+        assertFalse(PadBridge.anyKeyboardOrMouseConnected())
+    }
+
+    @Test fun aBluetoothKeyboardThatDeclaresPadButtonsIsAKeyboard() {
+        val keyboard = device(InputDevice.SOURCE_GAMEPAD or InputDevice.SOURCE_KEYBOARD, InputDevice.KEYBOARD_TYPE_ALPHABETIC,
+            keys = intArrayOf(KeyEvent.KEYCODE_A, KeyEvent.KEYCODE_BUTTON_A))
+        assertFalse(PadBridge.isFromController(keyboard))
+        assertFalse(PadBridge.anyControllerConnected())
+        assertTrue(PadBridge.anyKeyboardOrMouseConnected())
+    }
+
+    @Test fun aBluetoothMouseThatDeclaresPadButtonsIsAMouse() {
+        val mouse = device(InputDevice.SOURCE_MOUSE or InputDevice.SOURCE_GAMEPAD, InputDevice.KEYBOARD_TYPE_NON_ALPHABETIC,
+            rangeSource = InputDevice.SOURCE_MOUSE)
+        assertFalse(PadBridge.isFromController(mouse))
+        assertFalse(PadBridge.anyControllerConnected())
+        assertTrue(PadBridge.anyKeyboardOrMouseConnected())
     }
 
     @Test fun aJoystickWithoutKeyboardCapabilitiesRemainsAController() {
@@ -58,11 +76,11 @@ class PadBridgeRoutingTest {
         }
     }
 
-    @Test fun physicalControllerButtonsDistinguishAHybridWithoutAxes() {
-        val hybrid = device(COMPOSITE, InputDevice.KEYBOARD_TYPE_ALPHABETIC,
+    @Test fun declaredPadButtonsDoNotMakeAKeyboardWithoutAxesAController() {
+        val keyboard = device(COMPOSITE, InputDevice.KEYBOARD_TYPE_ALPHABETIC,
             keys = intArrayOf(KeyEvent.KEYCODE_A, KeyEvent.KEYCODE_BUTTON_A))
-        assertTrue(hybrid.hasKeys(KeyEvent.KEYCODE_BUTTON_A)[0])
-        assertTrue(PadBridge.isFromController(hybrid))
+        assertTrue(keyboard.hasKeys(KeyEvent.KEYCODE_BUTTON_A)[0])
+        assertFalse(PadBridge.isFromController(keyboard))
     }
 
     @Test fun absentAndVirtualDevicesDoNotCountAsControllers() {
@@ -77,7 +95,9 @@ class PadBridgeRoutingTest {
         val keyboard = device(InputDevice.SOURCE_KEYBOARD, InputDevice.KEYBOARD_TYPE_ALPHABETIC)
         val composite = device(COMPOSITE, InputDevice.KEYBOARD_TYPE_ALPHABETIC)
         val hybrid = device(COMPOSITE, InputDevice.KEYBOARD_TYPE_ALPHABETIC, rangeSource = InputDevice.SOURCE_JOYSTICK)
-        val gamepad = device(COMPOSITE or InputDevice.SOURCE_GAMEPAD, InputDevice.KEYBOARD_TYPE_ALPHABETIC)
+        val gamepad = device(COMPOSITE or InputDevice.SOURCE_GAMEPAD, InputDevice.KEYBOARD_TYPE_ALPHABETIC,
+            rangeSource = InputDevice.SOURCE_JOYSTICK)
+        val padBitsKeyboard = device(InputDevice.SOURCE_GAMEPAD or InputDevice.SOURCE_KEYBOARD, InputDevice.KEYBOARD_TYPE_ALPHABETIC)
         val joystick = device(InputDevice.SOURCE_JOYSTICK, InputDevice.KEYBOARD_TYPE_NONE)
         val virtual = device(InputDevice.SOURCE_GAMEPAD, InputDevice.KEYBOARD_TYPE_NONE, id = -1)
         for (action in listOf(KeyEvent.ACTION_DOWN, KeyEvent.ACTION_UP)) {
@@ -89,7 +109,7 @@ class PadBridgeRoutingTest {
             for (code in listOf(KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_RIGHT,
                 KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_BACK,
                 KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_HOME)) {
-                for (device in listOf(keyboard, composite, hybrid)) {
+                for (device in listOf(keyboard, composite, hybrid, padBitsKeyboard)) {
                     assertFalse(PadBridge.isControllerKeyEvent(key(device, code, action)))
                     assertFalse(PadBridge.isControllerKeyEvent(key(device, code, action, InputDevice.SOURCE_DPAD)))
                 }

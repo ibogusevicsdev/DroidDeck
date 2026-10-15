@@ -2144,7 +2144,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
             SessionPrefs.OSC_STEAM_TOUCH -> SessionState.mode == SessionService.MODE_STEAM ||
                 (!PadBridge.anyControllerConnected() && SessionState.mode != SessionService.MODE_DESKTOP)
             else -> !PadBridge.anyControllerConnected() && !SteamControllerBle.connected &&
-                SessionState.mode != SessionService.MODE_DESKTOP
+                !PadBridge.anyKeyboardOrMouseConnected() && SessionState.mode != SessionService.MODE_DESKTOP
         }
         onScreenButtonsVisible = show
         if (steam != null) {

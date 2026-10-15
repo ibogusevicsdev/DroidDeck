@@ -23,13 +23,6 @@ public final class PadBridge {
             MotionEvent.AXIS_HAT_X, MotionEvent.AXIS_HAT_Y, MotionEvent.AXIS_LTRIGGER,
             MotionEvent.AXIS_RTRIGGER, MotionEvent.AXIS_BRAKE, MotionEvent.AXIS_GAS
     };
-    private static final int[] CONTROLLER_BUTTONS = {
-            KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_BUTTON_X,
-            KeyEvent.KEYCODE_BUTTON_Y, KeyEvent.KEYCODE_BUTTON_L1, KeyEvent.KEYCODE_BUTTON_R1,
-            KeyEvent.KEYCODE_BUTTON_SELECT, KeyEvent.KEYCODE_BUTTON_START,
-            KeyEvent.KEYCODE_BUTTON_THUMBL, KeyEvent.KEYCODE_BUTTON_THUMBR,
-            KeyEvent.KEYCODE_BUTTON_MODE, KeyEvent.KEYCODE_BUTTON_L2, KeyEvent.KEYCODE_BUTTON_R2
-    };
     private static final long QAM_GUIDE_LEAD_MIN_MS = 80;
     private static final long QAM_GUIDE_LEAD_MAX_MS = 1500;
     private static final int QAM_GUIDE_LEAD_FRAMES = 8;
@@ -130,17 +123,16 @@ public final class PadBridge {
         if (device == null) return false;
         if (device.isVirtual()) return false;
         int sources = device.getSources();
-        if ((sources & InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD) return true;
-        if ((sources & InputDevice.SOURCE_JOYSTICK) != InputDevice.SOURCE_JOYSTICK) return false;
-        if (device.getKeyboardType() != InputDevice.KEYBOARD_TYPE_ALPHABETIC) return true;
+        boolean joystick = (sources & InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK;
+        if (!joystick && (sources & InputDevice.SOURCE_GAMEPAD) != InputDevice.SOURCE_GAMEPAD) return false;
         for (int axis : JOYSTICK_AXES) {
             InputDevice.MotionRange range = device.getMotionRange(axis, InputDevice.SOURCE_JOYSTICK);
             if (range != null && range.getMax() > range.getMin()) return true;
         }
-        for (boolean present : device.hasKeys(CONTROLLER_BUTTONS)) {
-            if (present) return true;
-        }
-        return false;
+        // Android derives GAMEPAD and pad keys from the BTN_* codes a HID descriptor declares, so
+        // Bluetooth keyboards and mice often carry them without having a single pad button.
+        if (device.getKeyboardType() == InputDevice.KEYBOARD_TYPE_ALPHABETIC) return false;
+        return joystick || !device.supportsSource(InputDevice.SOURCE_MOUSE);
     }
 
     public static boolean isControllerKeyEvent(KeyEvent event) {
@@ -198,6 +190,17 @@ public final class PadBridge {
     public static boolean anyControllerConnected() {
         for (int id : InputDevice.getDeviceIds()) {
             if (isFromController(InputDevice.getDevice(id))) return true;
+        }
+        return false;
+    }
+
+    public static boolean anyKeyboardOrMouseConnected() {
+        for (int id : InputDevice.getDeviceIds()) {
+            InputDevice device = InputDevice.getDevice(id);
+            if (device == null || device.isVirtual() || isFromController(device)) continue;
+            if (android.os.Build.VERSION.SDK_INT >= 29 && !device.isExternal()) continue;
+            if (device.supportsSource(InputDevice.SOURCE_MOUSE)
+                    || device.getKeyboardType() == InputDevice.KEYBOARD_TYPE_ALPHABETIC) return true;
         }
         return false;
     }
